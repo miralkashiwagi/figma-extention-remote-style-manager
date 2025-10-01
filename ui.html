@@ -1,0 +1,292 @@
+<style>
+    * {
+        box-sizing: border-box;
+    }
+    body {
+        margin: 0;
+        padding: 16px;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        font-size: 12px;
+        color: #333;
+        background: #fff;
+    }
+    h2 {
+        margin: 0 0 16px 0;
+        font-size: 14px;
+        font-weight: 600;
+    }
+    .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 16px;
+    }
+    .scan-btn {
+        padding: 8px 16px;
+        background: #18A0FB;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 500;
+    }
+    .scan-btn:hover {
+        background: #0D8BDB;
+    }
+    .empty-state {
+        padding: 32px;
+        text-align: center;
+        color: #999;
+        background: #f5f5f5;
+        border-radius: 8px;
+    }
+    .style-group {
+        margin-bottom: 24px;
+        border: 1px solid #e5e5e5;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    .style-header {
+        padding: 12px 16px;
+        background: #f9f9f9;
+        border-bottom: 1px solid #e5e5e5;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .style-name {
+        font-weight: 600;
+        flex: 1;
+    }
+    .style-type {
+        display: inline-block;
+        padding: 2px 8px;
+        background: #e5e5e5;
+        border-radius: 4px;
+        font-size: 10px;
+        margin-left: 8px;
+    }
+    .layer-count {
+        color: #999;
+        font-size: 11px;
+        margin-left: 8px;
+    }
+    .layers-list {
+        max-height: 150px;
+        overflow-y: auto;
+        border-bottom: 1px solid #e5e5e5;
+    }
+    .layer-item {
+        padding: 8px 16px;
+        border-bottom: 1px solid #f0f0f0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .layer-item:last-child {
+        border-bottom: none;
+    }
+    .layer-item:hover {
+        background: #f9f9f9;
+    }
+    .layer-name {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .layer-type {
+        color: #999;
+        font-size: 10px;
+        margin-right: 8px;
+    }
+    .actions {
+        padding: 12px 16px;
+        background: #fff;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+    }
+    .select-btn {
+        padding: 6px 12px;
+        background: #fff;
+        border: 1px solid #e5e5e5;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 11px;
+    }
+    .select-btn:hover {
+        background: #f5f5f5;
+    }
+    .action-select {
+        flex: 1;
+        padding: 6px 8px;
+        border: 1px solid #e5e5e5;
+        border-radius: 4px;
+        font-size: 11px;
+        background: #fff;
+    }
+    .action-btn {
+        padding: 6px 12px;
+        background: #18A0FB;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 11px;
+        font-weight: 500;
+    }
+    .action-btn:hover {
+        background: #0D8BDB;
+    }
+    .action-btn:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+    }
+    .import-name {
+        flex: 1;
+        padding: 6px 8px;
+        border: 1px solid #e5e5e5;
+        border-radius: 4px;
+        font-size: 11px;
+    }
+</style>
+
+<div class="header">
+    <h2>Remote Style Manager</h2>
+    <button class="scan-btn" onclick="scan()">再スキャン</button>
+</div>
+
+<div id="content"></div>
+
+<script>
+    let remoteStyles = [];
+    let localStyles = [];
+
+    function scan() {
+        parent.postMessage({ pluginMessage: { type: 'scan' } }, '*');
+    }
+
+    function selectLayers(layerIds) {
+        parent.postMessage({ pluginMessage: { type: 'select-layers', layerIds } }, '*');
+    }
+
+    function swapStyle(styleId, layerIds, styleType) {
+        const selectEl = document.getElementById(`swap-${styleId}`);
+        const newStyleId = selectEl.value;
+
+        if (!newStyleId) return;
+
+        parent.postMessage({
+            pluginMessage: {
+                type: 'swap-style',
+                oldStyleId: styleId,
+                newStyleId,
+                layerIds,
+                styleType
+            }
+        }, '*');
+    }
+
+    function importStyle(styleId, styleName, layerIds, styleType) {
+        const inputEl = document.getElementById(`name-${styleId}`);
+        const name = inputEl.value || styleName;
+
+        parent.postMessage({
+            pluginMessage: {
+                type: 'import-style',
+                styleName: name,
+                layerIds,
+                styleType
+            }
+        }, '*');
+    }
+
+    function render() {
+        const content = document.getElementById('content');
+
+        if (remoteStyles.length === 0) {
+            content.innerHTML = `
+          <div class="empty-state">
+            リモートスタイルは見つかりませんでした<br>
+            別のドキュメントからコピーされた要素がある場合、ここに表示されます
+          </div>
+        `;
+            return;
+        }
+
+        let html = '';
+
+        for (const style of remoteStyles) {
+            const compatibleLocalStyles = localStyles.filter(ls => ls.type === style.styleType);
+            const layerIds = style.layers.map(l => l.id);
+
+            html += `
+          <div class="style-group">
+            <div class="style-header">
+              <div style="flex: 1;">
+                <span class="style-name">${escapeHtml(style.styleName)}</span>
+                <span class="style-type">${style.styleType}</span>
+                <span class="layer-count">${style.layers.length}個のレイヤー</span>
+              </div>
+            </div>
+
+            <div class="layers-list">
+              ${style.layers.map(layer => `
+                <div class="layer-item">
+                  <span class="layer-name">${escapeHtml(layer.name)}</span>
+                  <span class="layer-type">${layer.type}</span>
+                </div>
+              `).join('')}
+            </div>
+
+            <div class="actions">
+              <button class="select-btn" onclick='selectLayers(${JSON.stringify(layerIds)})'>
+                レイヤーを選択
+              </button>
+
+              <select class="action-select" id="swap-${style.styleId}">
+                <option value="">既存スタイルを選択...</option>
+                ${compatibleLocalStyles.map(ls => `
+                  <option value="${ls.id}">${escapeHtml(ls.name)}</option>
+                `).join('')}
+              </select>
+
+              <button class="action-btn" onclick='swapStyle("${style.styleId}", ${JSON.stringify(layerIds)}, "${style.styleType}")'>
+                スワップ
+              </button>
+            </div>
+
+            <div class="actions" style="border-top: 1px solid #e5e5e5;">
+              <input type="text" class="import-name" id="name-${style.styleId}"
+                     placeholder="新しいスタイル名" value="${escapeHtml(style.styleName)}">
+              <button class="action-btn" onclick='importStyle("${style.styleId}", "${escapeHtml(style.styleName)}", ${JSON.stringify(layerIds)}, "${style.styleType}")'>
+                ローカルに転送
+              </button>
+            </div>
+          </div>
+        `;
+        }
+
+        content.innerHTML = html;
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    window.onmessage = (event) => {
+        const msg = event.data.pluginMessage;
+        if (msg.type === 'scan-result') {
+            remoteStyles = msg.remoteStyles;
+            localStyles = msg.localStyles;
+            render();
+        }
+    };
+
+    // 初期表示
+    render();
+</script>
