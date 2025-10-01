@@ -212,7 +212,7 @@ async function swapStyle(layerIds: string[], oldStyleId: string, newStyleId: str
 }
 
 // リモートスタイルをローカルに転送
-async function importRemoteStyle(layerIds: string[], styleType: string, styleName: string) {
+async function importRemoteStyle(layerIds: string[], styleType: string, styleName: string, oldStyleId: string) {
     // 最初のレイヤーからスタイル情報を取得
     let newStyle: PaintStyle | TextStyle | EffectStyle | GridStyle | null = null;
 
@@ -266,7 +266,7 @@ async function importRemoteStyle(layerIds: string[], styleType: string, styleNam
 
     if (newStyle) {
         // 新しいスタイルを全レイヤーに適用
-        return await swapStyle(layerIds, '', newStyle.id, styleType);
+        return await swapStyle(layerIds, oldStyleId, newStyle.id, styleType);
     }
 
     return 0;
@@ -298,7 +298,7 @@ figma.ui.onmessage = async (msg) => {
         });
     } else if (msg.type === 'import-style') {
         await figma.loadFontAsync({ family: "Inter", style: "Regular" });
-        const count = await importRemoteStyle(msg.layerIds, msg.styleType, msg.styleName);
+        const count = await importRemoteStyle(msg.layerIds, msg.styleType, msg.styleName, msg.styleId);
         figma.notify(`スタイルをインポートし、${count}個のレイヤーに適用しました`);
 
         // 再スキャン
