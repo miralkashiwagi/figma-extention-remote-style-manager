@@ -189,16 +189,18 @@
         }, '*');
     }
 
-    function importStyle(styleId, styleName, layerIds, styleType) {
+    function importStyle(styleId, styleName, layers, styleType) {
         const inputEl = document.getElementById(`name-${styleId}`);
         const name = inputEl.value || styleName;
+
+        const layerIds = layers.map(layer => layer.id);
 
         parent.postMessage({
             pluginMessage: {
                 type: 'import-style',
                 styleName: name,
                 styleId,
-                layerIds,
+                layers,
                 styleType
             }
         }, '*');
@@ -262,7 +264,7 @@
             <div class="actions" style="border-top: 1px solid #e5e5e5;">
               <input type="text" class="import-name" id="name-${style.styleId}"
                      placeholder="新しいスタイル名" value="${escapeHtml(style.styleName)}">
-              <button class="action-btn" onclick='importStyle("${style.styleId}", "${escapeHtml(style.styleName)}", ${JSON.stringify(layerIds)}, "${style.styleType}")'>
+              <button class="action-btn" onclick='importStyle("${style.styleId}", "${escapeHtml(style.styleName)}", ${JSON.stringify(style.layers)}, "${style.styleType}")'>
                 ローカルに転送
               </button>
             </div>

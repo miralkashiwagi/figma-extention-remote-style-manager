@@ -1,12 +1,15 @@
+interface RemoteStyleLayerInfo {
+    id: string;
+    name: string;
+    type: string;
+    styleUsage?: 'fill' | 'stroke';
+}
+
 interface RemoteStyleInfo {
     styleId: string;
     styleName: string;
     styleType: 'FILL' | 'TEXT' | 'EFFECT' | 'GRID';
-    layers: Array<{
-        id: string;
-        name: string;
-        type: string;
-    }>;
+    layers: RemoteStyleLayerInfo[];
 }
 
 interface LocalStyleInfo {
@@ -26,10 +29,10 @@ async function findLayersWithRemoteStyles(): Promise<RemoteStyleInfo[]> {
     async function traverse(node: SceneNode) {
         // Fill/Stroke styles
         if ('fillStyleId' in node && node.fillStyleId) {
-            await checkStyle(node, node.fillStyleId, 'FILL');
+            await checkStyle(node, node.fillStyleId, 'FILL', 'fill');
         }
         if ('strokeStyleId' in node && node.strokeStyleId) {
-            await checkStyle(node, node.strokeStyleId, 'FILL');
+            await checkStyle(node, node.strokeStyleId, 'FILL', 'stroke');
         }
 
         // Text styles
@@ -54,7 +57,7 @@ async function findLayersWithRemoteStyles(): Promise<RemoteStyleInfo[]> {
         }
     }
 
-    async function checkStyle(node: SceneNode, styleId: string | symbol, styleType: 'FILL' | 'TEXT' | 'EFFECT' | 'GRID') {
+    async function checkStyle(node: SceneNode, styleId: string | symbol, styleType: 'FILL' | 'TEXT' | 'EFFECT' | 'GRID', styleUsage?: 'fill' | 'stroke') {
         if (typeof styleId !== 'string') return;
 
         try {
@@ -74,7 +77,8 @@ async function findLayersWithRemoteStyles(): Promise<RemoteStyleInfo[]> {
                 info.layers.push({
                     id: node.id,
                     name: node.name,
-                    type: node.type
+                    type: node.type,
+                    styleUsage
                 });
             } else if (style.remote) {
                 // remoteフラグが立っているスタイル
@@ -91,7 +95,8 @@ async function findLayersWithRemoteStyles(): Promise<RemoteStyleInfo[]> {
                 info.layers.push({
                     id: node.id,
                     name: node.name,
-                    type: node.type
+                    type: node.type,
+                    styleUsage
                 });
             }
         } catch (e) {
@@ -109,7 +114,8 @@ async function findLayersWithRemoteStyles(): Promise<RemoteStyleInfo[]> {
             info.layers.push({
                 id: node.id,
                 name: node.name,
-                type: node.type
+                type: node.type,
+                styleUsage
             });
         }
     }
@@ -212,22 +218,32 @@ async function swapStyle(layerIds: string[], oldStyleId: string, newStyleId: str
 }
 
 // リモートスタイルをローカルに転送
-async function importRemoteStyle(layerIds: string[], styleType: string, styleName: string, oldStyleId: string) {
+async function importRemoteStyle(layerInfos: RemoteStyleLayerInfo[], styleType: string, styleName: string, oldStyleId: string) {
     // 最初のレイヤーからスタイル情報を取得
     let newStyle: PaintStyle | TextStyle | EffectStyle | GridStyle | null = null;
+    const layerIds = layerInfos.map(l => l.id);
 
-    for (const id of layerIds) {
-        const node = await figma.getNodeByIdAsync(id);
+    for (const layerInfo of layerInfos) {
+        const node = await figma.getNodeByIdAsync(layerInfo.id);
         if (!node) continue;
 
         try {
-            if (styleType === 'FILL' && 'fills' in node) {
-                const fills = node.fills;
-                if (fills !== figma.mixed) {
-                    newStyle = figma.createPaintStyle();
-                    newStyle.name = styleName;
-                    newStyle.paints = fills;
-                    break;
+            if (styleType === 'FILL') {
+                if (layerInfo.styleUsage === 'stroke') {
+                    if ('strokes' in node && Array.isArray(node.strokes) && node.strokes.length > 0) {
+                        newStyle = figma.createPaintStyle();
+                        newStyle.name = styleName;
+                        newStyle.paints = node.strokes;
+                        break;
+                    }
+                } else if ('fills' in node) {
+                    const fills = node.fills;
+                    if (fills !== figma.mixed) {
+                        newStyle = figma.createPaintStyle();
+                        newStyle.name = styleName;
+                        newStyle.paints = fills;
+                        break;
+                    }
                 }
             } else if (styleType === 'TEXT' && node.type === 'TEXT') {
                 const textNode = node as TextNode;
@@ -298,7 +314,7 @@ figma.ui.onmessage = async (msg) => {
         });
     } else if (msg.type === 'import-style') {
         await figma.loadFontAsync({ family: "Inter", style: "Regular" });
-        const count = await importRemoteStyle(msg.layerIds, msg.styleType, msg.styleName, msg.styleId);
+        const count = await importRemoteStyle(msg.layers, msg.styleType, msg.styleName, msg.styleId);
         figma.notify(`スタイルをインポートし、${count}個のレイヤーに適用しました`);
 
         // 再スキャン
